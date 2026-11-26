@@ -117,8 +117,8 @@ fun FoxAngelScreen() {
 
     fun handleVoice(text: String) {
         val s = text.lowercase(Locale.ROOT)
-        val hasAngel = s.contains("angel") || s.contains("انجل") || s.contains("أنجل")
-        if (!hasAngel) { message = "Mot d’activation ANGEL absent"; return }
+        val hasAngel = s.contains("angel") || s.contains("انجل") || s.contains("أنجل") || s.contains("انجيل")
+        if (!hasAngel) { message = "Entendu: $text — mot ANGEL non détecté"; return }
         when {
             listOf("طف", "طفي", "اطفي", "سكر", "eteins", "éteins", "eteindre", "off", "coupe").any { s.contains(it) } ->
                 runFox("set_state/?state=off", "OFF")
@@ -126,7 +126,7 @@ fun FoxAngelScreen() {
                 runFox("set_state/?state=on", "ON")
             listOf("حالة", "الحالة", "status", "statut", "etat", "état").any { s.contains(it) } ->
                 runFox("get_state/", "STATE")
-            else -> message = "ANGEL détecté, commande non reconnue"
+            else -> message = "Entendu: $text — commande ANGEL non reconnue"
         }
     }
 
@@ -137,30 +137,30 @@ fun FoxAngelScreen() {
             message = "Écoute activée — dites ANGEL + commande"
             val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer = recognizer
-val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-               putExtra(
-                   RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                   RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-               )
+           val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    putExtra(
+        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+    )
 
-               // Arabic is the default language.
-               putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar")
+    // العربية العامة كلغة أساسية
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar")
 
-               // Automatic Arabic/French switching on supported Android 14+ speech services.
-               if (android.os.Build.VERSION.SDK_INT >= 34) {
-                   putExtra(
-                       "android.speech.extra.ENABLE_LANGUAGE_SWITCH",
-                       "balanced"
-                   )
-                   putExtra(
-                       "android.speech.extra.LANGUAGE_SWITCH_ALLOWED_LANGUAGES",
-                       arrayListOf("ar", "fr-FR")
-                   )
-               }
+    // دعم التبديل الآلي بين العربية والفرنسية في Android 14+
+    if (android.os.Build.VERSION.SDK_INT >= 34) {
+        putExtra(
+            "android.speech.extra.ENABLE_LANGUAGE_SWITCH",
+            "balanced"
+        )
+        putExtra(
+            "android.speech.extra.LANGUAGE_SWITCH_ALLOWED_LANGUAGES",
+            arrayListOf("ar", "fr-FR")
+        )
+    }
 
-               putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-           }
-recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
+    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+}
+            recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { message = "ANGEL écoute…" }
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
@@ -174,8 +174,9 @@ recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
                 }
                 override fun onResults(results: Bundle?) {
                     val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    handleVoice(heard)
                     listening = false
+                    if (heard.isBlank()) message = "Aucune parole reconnue — réessayez près du micro"
+                    else handleVoice(heard)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {}
                 override fun onEvent(eventType: Int, params: Bundle?) {}
