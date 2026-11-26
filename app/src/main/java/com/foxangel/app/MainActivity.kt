@@ -137,16 +137,17 @@ fun FoxAngelScreen() {
             message = "Écoute activée — dites ANGEL + commande"
             val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer = recognizer
-           val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+
+val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
     putExtra(
         RecognizerIntent.EXTRA_LANGUAGE_MODEL,
         RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
     )
 
-    // العربية العامة كلغة أساسية
+    // العربية كلغة أساسية
     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar")
 
-    // دعم التبديل الآلي بين العربية والفرنسية في Android 14+
+    // التبديل بين العربية والفرنسية على Android 14+
     if (android.os.Build.VERSION.SDK_INT >= 34) {
         putExtra(
             "android.speech.extra.ENABLE_LANGUAGE_SWITCH",
@@ -160,6 +161,7 @@ fun FoxAngelScreen() {
 
     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
 }
+
             recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { message = "ANGEL écoute…" }
                 override fun onBeginningOfSpeech() {}
