@@ -116,17 +116,39 @@ fun FoxAngelScreen() {
     }
 
     fun handleVoice(text: String) {
-        val s = text.lowercase(Locale.ROOT)
-        val hasAngel = s.contains("angel") || s.contains("انجل") || s.contains("أنجل") || s.contains("انجيل")
-        if (!hasAngel) { message = "Entendu: $text — mot ANGEL non détecté"; return }
+        // Normaliser le texte reconnu pour accepter les accents et la ponctuation.
+        val normalized = java.text.Normalizer.normalize(
+            text.lowercase(Locale.ROOT),
+            java.text.Normalizer.Form.NFD
+        ).replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("[^a-z0-9\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        val words = normalized.split(" ").filter { it.isNotBlank() }
+        val hasAngel = words.any { it == "angel" || it == "angeul" || it == "angell" || it == "ange" }
+
+        if (!hasAngel) {
+            message = "Entendu: $text — mot ANGEL non détecté"
+            return
+        }
+
+        if (!connected) {
+            message = "Entendu: $text — connectez FOX avant la commande vocale"
+            return
+        }
+
         when {
-            listOf("طف", "طفي", "اطفي", "سكر", "eteins", "éteins", "eteindre", "off", "coupe").any { s.contains(it) } ->
+            words.any { it in setOf("off", "eteins", "eteindre", "coupe", "stop") } ->
                 runFox("set_state/?state=off", "OFF")
-            listOf("شغل", "شعل", "ولع", "افتح", "allume", "allumer", "on", "active").any { s.contains(it) } ->
+
+            words.any { it in setOf("on", "one", "allume", "allumer", "active", "demarre") } ->
                 runFox("set_state/?state=on", "ON")
-            listOf("حالة", "الحالة", "status", "statut", "etat", "état").any { s.contains(it) } ->
+
+            words.any { it in setOf("status", "statut", "etat", "state") } ->
                 runFox("get_state/", "STATE")
-            else -> message = "Entendu: $text — commande ANGEL non reconnue"
+
+            else -> message = "Entendu: $text — dites ANGEL ON ou ANGEL OFF"
         }
     }
 
@@ -135,81 +157,102 @@ fun FoxAngelScreen() {
     fun startVoiceRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             listening = false
-            message = "Service de reconnaissance vocale indisponible sur ce téléphone"
+            message = "Reconnaissance vocale indisponible sur ce téléphone"
             return
         }
+
         try {
             speechRecognizer?.cancel()
             speechRecognizer?.destroy()
+            speechRecognizer = null
 
             val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             speechRecognizer = recognizer
 
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar")
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                // La commande demandée est en français/anglais simple : "Angel ON/OFF".
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "fr-FR")
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             }
 
             recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     listening = true
-                    message = "ANGEL écoute… قول الأمر الآن"
+                    message = "ANGEL écoute… dites « Angel ON » ou « Angel OFF »"
                 }
+
                 override fun onBeginningOfSpeech() {
-                    message = "صوتك وصل — نحلّل الكلام…"
+                    message = "Je vous écoute…"
                 }
+
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
+
                 override fun onEndOfSpeech() {
-                    message = "Fin de parole — analyse…"
+                    message = "Fin de parole — reconnaissance en cours…"
                 }
+
                 override fun onError(error: Int) {
                     listening = false
                     message = when (error) {
-                        SpeechRecognizer.ERROR_AUDIO -> "Erreur audio (3)"
+                        SpeechRecognizer.ERROR_AUDIO -> "Erreur microphone/audio (3)"
                         SpeechRecognizer.ERROR_CLIENT -> "Erreur du service vocal (5)"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permission microphone refusée"
                         SpeechRecognizer.ERROR_NETWORK -> "Erreur réseau du service vocal (2)"
                         SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Délai réseau dépassé (1)"
-                        SpeechRecognizer.ERROR_NO_MATCH -> "Aucune parole reconnue (7) — جرّب مرة أخرى"
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Service vocal مشغول (8)"
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "ما سمعناش كلام (6) — عاود اضغط V"
-                        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "طلبات صوتية كثيرة — استنّى شوية (10)"
-                        SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "انقطع اتصال خدمة التعرف على الصوت (11)"
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "لغة التعرف غير مدعومة (12)"
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "حزمة اللغة العربية غير متوفرة (13)"
+                        SpeechRecognizer.ERROR_NO_MATCH -> "Aucune parole reconnue — réessayez en disant Angel ON"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Service vocal occupé — réessayez"
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Aucune parole entendue — appuyez une fois sur V puis parlez"
+                        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "Trop de demandes vocales — attendez quelques secondes"
+                        SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "Connexion au service vocal interrompue"
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "La langue française n'est pas prise en charge"
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "Téléchargez la reconnaissance vocale française dans les paramètres du téléphone"
                         else -> "Erreur reconnaissance vocale : code $error"
                     }
-                    if (speechRecognizer === recognizer) {
-                        speechRecognizer = null
-                    }
-                    recognizer.destroy()
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
                 }
+
                 override fun onResults(results: Bundle?) {
                     listening = false
-                    val heard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    if (speechRecognizer === recognizer) {
-                        speechRecognizer = null
-                    }
-                    recognizer.destroy()
-                    if (heard.isBlank()) message = "Aucune parole reconnue"
-                    else {
+                    val heard = results
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                        .orEmpty()
+
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
+
+                    if (heard.isBlank()) {
+                        message = "Aucune parole reconnue — réessayez"
+                    } else {
                         message = "Entendu: $heard"
                         handleVoice(heard)
                     }
                 }
+
                 override fun onPartialResults(partialResults: Bundle?) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                    if (!partial.isNullOrBlank()) message = "J'entends: $partial"
+                    val partial = partialResults
+                        ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+
+                    if (!partial.isNullOrBlank()) {
+                        message = "J'entends: $partial"
+                    }
                 }
+
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
 
             listening = true
-            message = "Démarrage du service vocal…"
+            message = "Démarrage du micro…"
             recognizer.startListening(intent)
         } catch (e: Exception) {
             listening = false
@@ -230,11 +273,7 @@ fun FoxAngelScreen() {
     }
 
     DisposableEffect(Unit) {
-        onDispose {
-            speechRecognizer?.cancel()
-            speechRecognizer?.destroy()
-            speechRecognizer = null
-        }
+        onDispose { speechRecognizer?.destroy() }
     }
 
     MaterialTheme(colorScheme = darkColorScheme(
@@ -277,7 +316,7 @@ fun FoxAngelScreen() {
                         speechRecognizer?.destroy()
                         speechRecognizer = null
                         listening = false
-                        message = "Écoute arrêtée"
+                        message = "Écoute annulée"
                     } else {
                         val permission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
                         if (permission == PackageManager.PERMISSION_GRANTED) {
